@@ -1,0 +1,11 @@
+services:
+  frontend:
+    build:
+      context: .
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000/api/v1}
+        VITE_USE_MOCK_DATA: ${VITE_USE_MOCK_DATA:-true}
+    container_name: obi-smart-retail-web
+    ports:
+      - "8081:80"
+    restart: unless-stopped

@@ -1,0 +1,13 @@
+.csv-mode-control{display:grid;grid-template-columns:auto minmax(130px,180px);align-items:center;gap:8px 12px;margin:0 0 12px}.csv-mode-control label{color:#334155;font-size:12px;font-weight:750}.csv-mode-control select{border:1px solid #cbd5e1;border-radius:9px;padding:8px 10px;background:#fff;color:#334155}.csv-mode-control p{grid-column:1/-1;margin:0;padding:8px 10px;border:1px solid #fed7aa;border-radius:9px;background:#fff7ed;color:#c2410c;font-size:11px}.csv-dropzone.disabled{pointer-events:none;opacity:.65}.csv-card-actions .csv-integration-ready{background:#ecfdf5;color:#047857}.csv-upload-result{margin-top:12px;padding:12px;border:1px solid #bbf7d0;border-radius:11px;background:#f0fdf4;color:#166534}.csv-upload-result>div:first-child{display:flex;align-items:center;gap:7px}.csv-upload-result p{margin:5px 0 10px;color:#3f7652;font-size:11px}.csv-upload-result dl{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin:0}.csv-upload-result dl div{padding:7px;border-radius:8px;background:#fff}.csv-upload-result dt{color:#6b8d75;font-size:9px;text-transform:uppercase}.csv-upload-result dd{margin:2px 0 0;color:#14532d;font-size:16px;font-weight:800}.csv-upload-result small{display:block;margin-top:9px;font-size:10px}.csv-upload-result .csv-result-warning{color:#b45309}
+@media(max-width:480px){.csv-mode-control{grid-template-columns:1fr}.csv-mode-control p{grid-column:1}.csv-upload-result dl{grid-template-columns:1fr}}
+.csv-card-action-buttons{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
+.csv-card-action-buttons button{display:inline-flex;align-items:center;justify-content:center;gap:6px}
+.csv-card-action-buttons .csv-recalculate-button{border:1px solid #0284c7;background:#fff;color:#0369a1}
+.csv-card-action-buttons .csv-recalculate-button:hover:not(:disabled){background:#eff8ff}
+.csv-card-action-buttons .csv-recalculate-button:disabled{border-color:#cbd5e1}
+.csv-recalculation-result{border-color:#bae6fd;background:#eff8ff;color:#075985}
+.csv-recalculation-result p{color:#47758f}
+.csv-recalculation-result dl div{background:#fff}
+.csv-recalculation-result dt{color:#6b8da0}
+.csv-recalculation-result dd{color:#075985}
+@media(max-width:760px){.csv-card-action-buttons{width:100%;flex-direction:column}.csv-card-action-buttons button{width:100%}}

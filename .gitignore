@@ -1,0 +1,21 @@
+# Variables locales
+.env
+.env.*
+!.env.example
+
+# Dependencias y compilación
+node_modules/
+dist/
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+
+# Herramientas locales
+.agents/
+.codex/
+.vscode/
+.idea/
+
+*.log
+.DS_Store
+Thumbs.db
