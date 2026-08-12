@@ -55,6 +55,8 @@ export function CsvUploadCard({ title, description, endpoint, icon, supportsMode
   const [error, setError] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [mode, setMode] = useState<HistoricalSalesImportMode>('incremental')
+  const [fecha, setFecha] = useState('')
+  const [publishMessage, setPublishMessage] = useState(false)
   const uploadMutation = useMutation({
     mutationFn: (request: CsvImportRequest) => {
       if (!onUpload) throw new Error('La integración no está disponible.')
@@ -63,6 +65,8 @@ export function CsvUploadCard({ title, description, endpoint, icon, supportsMode
     onSuccess: () => {
       setFile(null)
       setMode('incremental')
+      setFecha('')
+      setPublishMessage(false)
       if (inputRef.current) inputRef.current.value = ''
     },
   })
@@ -120,7 +124,22 @@ export function CsvUploadCard({ title, description, endpoint, icon, supportsMode
       if (!confirmed) return
     }
 
-    uploadMutation.mutate(supportsMode ? { file, mode } : { file })
+    uploadMutation.mutate(supportsMode
+      ? {
+          file,
+          mode,
+          fecha: mode === 'incremental' && fecha ? fecha : undefined,
+          publishMessage: mode === 'incremental' && publishMessage ? true : undefined,
+        }
+      : { file })
+  }
+
+  function handleModeChange(nextMode: HistoricalSalesImportMode) {
+    setMode(nextMode)
+    if (nextMode === 'replace') {
+      setFecha('')
+      setPublishMessage(false)
+    }
   }
 
   function handleRecalculate() {
@@ -146,7 +165,7 @@ export function CsvUploadCard({ title, description, endpoint, icon, supportsMode
           <select
             id={`${inputId}-mode`}
             value={mode}
-            onChange={(event) => setMode(event.target.value as HistoricalSalesImportMode)}
+            onChange={(event) => handleModeChange(event.target.value as HistoricalSalesImportMode)}
             disabled={isBusy}
           >
             <option value='incremental'>Incremental</option>
@@ -154,6 +173,31 @@ export function CsvUploadCard({ title, description, endpoint, icon, supportsMode
           </select>
           {mode === 'replace' && <p>Este modo reemplazará completamente la información histórica.</p>}
         </div>
+      )}
+
+      {onUpload && supportsMode && (
+        <fieldset className='csv-incremental-options' disabled={mode !== 'incremental' || isBusy}>
+          <legend>Opciones de publicación</legend>
+          <div className='csv-date-control'>
+            <label htmlFor={`${inputId}-fecha`}>Fecha <span>(opcional)</span></label>
+            <input
+              id={`${inputId}-fecha`}
+              type='date'
+              value={fecha}
+              onChange={(event) => setFecha(event.target.value)}
+            />
+          </div>
+          <label className='csv-publish-control' htmlFor={`${inputId}-publish-message`}>
+            <input
+              id={`${inputId}-publish-message`}
+              type='checkbox'
+              checked={publishMessage}
+              onChange={(event) => setPublishMessage(event.target.checked)}
+            />
+            <span>Publicar mensaje al terminar la carga</span>
+          </label>
+          {mode !== 'incremental' && <small>Disponible solamente para cargas incrementales.</small>}
+        </fieldset>
       )}
 
       <div

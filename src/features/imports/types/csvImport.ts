@@ -3,6 +3,8 @@ import type { HistoricalSalesImportMode } from './historicalSalesImport'
 export interface CsvImportRequest {
   file: File
   mode?: HistoricalSalesImportMode
+  fecha?: string
+  publishMessage?: boolean
 }
 
 export interface CsvImportSummary {
