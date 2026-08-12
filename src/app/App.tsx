@@ -4,11 +4,13 @@ import { HomeRedirect, ProtectedRoute, PublicOnlyRoute } from '../features/auth/
 import { DashboardPage } from '../pages/DashboardPage'
 import { CsvImportsPage } from '../pages/CsvImportsPage'
 import { LoginPage } from '../pages/LoginPage'
+import { SuggestedOrderEventsManager } from '../features/suggestedOrders/components/SuggestedOrderEventsManager'
 
 export default function App() {
   return (
     <>
       <AuthSessionManager />
+      <SuggestedOrderEventsManager />
       <Routes>
         <Route path='/' element={<HomeRedirect />} />
         <Route path='/login' element={<PublicOnlyRoute><LoginPage /></PublicOnlyRoute>} />
