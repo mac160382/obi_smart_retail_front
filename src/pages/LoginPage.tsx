@@ -41,7 +41,7 @@ export function LoginPage() {
     setIsSubmitting(true)
     try {
       const response = await login({ username, password })
-      startSession(response)
+      startSession(response, username)
       const state = location.state as LoginLocationState | null
       navigate(state?.from?.pathname || '/dashboard', { replace: true })
     } catch (requestError) {

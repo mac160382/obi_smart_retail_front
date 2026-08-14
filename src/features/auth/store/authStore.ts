@@ -5,7 +5,7 @@ const AUTH_STORAGE_KEY = 'obi-smart-retail.auth'
 
 interface AuthState {
   session: AuthSession | null
-  startSession: (response: LoginResponse) => void
+  startSession: (response: LoginResponse, username: string) => void
   clearSession: () => void
 }
 
@@ -46,7 +46,7 @@ function readStoredSession(): AuthSession | null {
 
 export const useAuthStore = create<AuthState>((set) => ({
   session: readStoredSession(),
-  startSession: (response) => {
+  startSession: (response, username) => {
     const expiresIn = Number(response.expires_in)
     if (!response.access_token || !Number.isFinite(expiresIn) || expiresIn <= 0) {
       throw new Error('La respuesta de autenticación no contiene una sesión válida.')
@@ -56,6 +56,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       accessToken: response.access_token,
       tokenType: response.token_type?.trim() || 'bearer',
       expiresAt: Date.now() + expiresIn * 1000,
+      username: username.trim(),
+      loginAt: Date.now(),
     }
 
     window.sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session))
