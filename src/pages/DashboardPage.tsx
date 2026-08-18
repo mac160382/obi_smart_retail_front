@@ -1,17 +1,21 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
-import { AlertTriangle, Archive, Boxes, BrainCircuit, CalendarDays, Calculator, Clock3, Download, PackageCheck, Search, ShieldCheck, Sparkles, SlidersHorizontal, TrendingDown } from 'lucide-react'
+import { AlertTriangle, Archive, Boxes, BrainCircuit, CalendarDays, Calculator, Clock3, Download, PackageCheck, Save, Search, ShieldCheck, Sparkles, SlidersHorizontal, TrendingDown } from 'lucide-react'
 import { Sidebar } from '../components/layout/Sidebar'
 import { getLocations } from '../features/catalogs/services/locationService'
 import { SuggestedOrdersTable } from '../features/suggestedOrders/components/SuggestedOrdersTable'
+import { updateSuggestedOrdersBatch } from '../features/suggestedOrders/services/suggestedOrderBatchUpdateService'
 import { getSuggestedOrders } from '../features/suggestedOrders/services/suggestedOrdersService'
 import { downloadSuggestedOrdersReport } from '../features/suggestedOrders/services/suggestedOrdersReportService'
-import type { SuggestedOrder } from '../features/suggestedOrders/types/suggestedOrder'
+import { suggestedOrderKey, type SuggestedOrder } from '../features/suggestedOrders/types/suggestedOrder'
+import type { SuggestedOrderBatchUpdateResponse } from '../features/suggestedOrders/types/suggestedOrderBatchUpdate'
 import { useAuthStore } from '../features/auth/store/authStore'
 
-function orderKey(order: SuggestedOrder) {
-  return `${order.location}:${order.item}`
+interface SuggestedOrderDraft {
+  order: SuggestedOrder
+  adjusted: string
+  observations: string
 }
 
 function escapeCsv(value: string | number | null) {
@@ -26,6 +30,27 @@ function getSuggestedOrdersError(error: unknown) {
     if (error.response.status >= 500) return 'El servicio no pudo consultar los pedidos. Intenta nuevamente.'
   }
   return 'No fue posible cargar los pedidos sugeridos.'
+}
+
+function getBatchUpdateError(error: unknown) {
+  if (axios.isAxiosError(error)) {
+    if (error.response?.status === 422) {
+      const detail = error.response.data?.detail
+      if (Array.isArray(detail)) {
+        const messages = detail.flatMap((item) => (
+          typeof item === 'object' && item && 'msg' in item && typeof item.msg === 'string'
+            ? [item.msg]
+            : []
+        ))
+        if (messages.length) return messages.join(' ')
+      }
+      return 'Los cambios no cumplen con el formato requerido.'
+    }
+    if (error.response?.status === 403) return 'No tienes permisos para aprobar pedidos sugeridos.'
+    if (!error.response) return 'No fue posible conectar con el servicio de actualización.'
+    if (error.response.status >= 500) return 'El servicio no pudo guardar los cambios. Intenta nuevamente.'
+  }
+  return 'No fue posible guardar los cambios.'
 }
 
 function DemandForecastChart({ weeklyUnits }: { weeklyUnits: number }) {
@@ -117,6 +142,7 @@ function IntelligentAlerts({ orders }: { orders: SuggestedOrder[] }) {
 }
 
 export function DashboardPage() {
+  const queryClient = useQueryClient()
   const session = useAuthStore((state) => state.session)
   const loginAt = session?.loginAt
   const loginDate = new Intl.DateTimeFormat('es-MX', {
@@ -125,10 +151,20 @@ export function DashboardPage() {
     year: 'numeric',
   }).format(new Date(loginAt ?? Date.now()))
   const [selectedLocation, setSelectedLocation] = useState('')
+  const [forecastOrigin, setForecastOrigin] = useState('')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
-  const [adjustedValues, setAdjustedValues] = useState<Record<string, string>>({})
+  const [drafts, setDrafts] = useState<Record<string, SuggestedOrderDraft>>({})
+  const [saveResult, setSaveResult] = useState<SuggestedOrderBatchUpdateResponse | null>(null)
+  const batchUpdateMutation = useMutation({
+    mutationFn: updateSuggestedOrdersBatch,
+    onSuccess: (response) => {
+      setDrafts({})
+      setSaveResult(response)
+      void queryClient.invalidateQueries({ queryKey: ['suggested-orders'] })
+    },
+  })
   const {
     data: locations,
     isPending: isLoadingLocations,
@@ -142,6 +178,7 @@ export function DashboardPage() {
   const cannotLoadLocations = hasLocationsError && !locations?.length
   const location = Number(selectedLocation)
   const hasValidLocation = selectedLocation !== '' && Number.isInteger(location)
+  const hasValidForecastOrigin = /^\d{4}-\d{2}-\d{2}$/.test(forecastOrigin)
 
   const {
     data: suggestedOrders,
@@ -151,9 +188,14 @@ export function DashboardPage() {
     isError: hasSuggestedOrdersError,
     refetch: refetchSuggestedOrders,
   } = useQuery({
-    queryKey: ['suggested-orders', location, page, pageSize],
-    queryFn: () => getSuggestedOrders({ location, page, pageSize }),
-    enabled: hasValidLocation,
+    queryKey: ['suggested-orders', location, forecastOrigin, page, pageSize],
+    queryFn: () => getSuggestedOrders({
+      location,
+      page,
+      pageSize,
+      forecastOrigin,
+    }),
+    enabled: hasValidLocation && hasValidForecastOrigin,
   })
 
   useEffect(() => {
@@ -182,13 +224,40 @@ export function DashboardPage() {
     ))
   }, [search, suggestedOrders?.items])
 
+  const draftList = useMemo(() => Object.values(drafts), [drafts])
+  const adjustedValues = useMemo(() => Object.fromEntries(
+    Object.entries(drafts).map(([key, draft]) => [key, draft.adjusted]),
+  ), [drafts])
+  const saveValidationMessage = useMemo(() => {
+    if (draftList.length === 0) return undefined
+    if (draftList.length > 500) return 'Solo se pueden guardar hasta 500 pedidos por operación.'
+
+    const invalidAdjusted = draftList.some(({ adjusted }) => (
+      adjusted.trim() === '' || !Number.isFinite(Number(adjusted))
+    ))
+    if (invalidAdjusted) return 'Captura una cantidad ajustada numérica en todas las filas modificadas.'
+
+    const invalidObservations = draftList.some(({ observations }) => {
+      const value = observations.trim()
+      return value.length === 0 || value.length > 5000
+    })
+    if (invalidObservations) return 'Captura observaciones de entre 1 y 5000 caracteres en todas las filas modificadas.'
+
+    const invalidIdentity = draftList.some(({ order }) => (
+      order.item.length === 0 || order.item.length > 50 || !/^\d{4}-\d{2}-\d{2}$/.test(order.forecast_origin)
+    ))
+    if (invalidIdentity) return 'Uno de los pedidos no tiene item u origen de pronóstico válido.'
+
+    return undefined
+  }, [draftList])
+
   const totals = useMemo(() => {
     const orders = suggestedOrders?.items ?? []
     return {
       estimated: orders.filter((order) => order.status === 'Estimado').length,
       suggested: orders.reduce((sum, order) => sum + order.sugerido, 0),
       adjusted: orders.reduce((sum, order) => {
-        const key = orderKey(order)
+        const key = suggestedOrderKey(order)
         const currentValue = Object.prototype.hasOwnProperty.call(adjustedValues, key)
           ? adjustedValues[key]
           : order.ajustado
@@ -201,7 +270,18 @@ export function DashboardPage() {
     setSelectedLocation(nextLocation)
     setPage(1)
     setSearch('')
-    setAdjustedValues({})
+    setDrafts({})
+    setSaveResult(null)
+    batchUpdateMutation.reset()
+  }
+
+  function changeForecastOrigin(nextForecastOrigin: string) {
+    setForecastOrigin(nextForecastOrigin)
+    setPage(1)
+    setSearch('')
+    setDrafts({})
+    setSaveResult(null)
+    batchUpdateMutation.reset()
   }
 
   function changePageSize(nextPageSize: number) {
@@ -209,15 +289,65 @@ export function DashboardPage() {
     setPage(1)
   }
 
+  function updateDraft(
+    order: SuggestedOrder,
+    changes: Partial<Pick<SuggestedOrderDraft, 'adjusted' | 'observations'>>,
+  ) {
+    setSaveResult(null)
+    batchUpdateMutation.reset()
+    setDrafts((current) => {
+      const key = suggestedOrderKey(order)
+      const existing = current[key]
+      const original = existing?.order ?? order
+      const next: SuggestedOrderDraft = {
+        order: original,
+        adjusted: existing?.adjusted ?? String(original.ajustado ?? ''),
+        observations: existing?.observations ?? original.observaciones ?? '',
+        ...changes,
+      }
+      const isOriginal = (
+        next.adjusted === String(original.ajustado ?? '') &&
+        next.observations === (original.observaciones ?? '')
+      )
+
+      if (isOriginal) {
+        const remaining = { ...current }
+        delete remaining[key]
+        return remaining
+      }
+
+      return { ...current, [key]: next }
+    })
+  }
+
   function changeAdjustedValue(order: SuggestedOrder, value: string) {
-    setAdjustedValues((current) => ({ ...current, [orderKey(order)]: value }))
+    updateDraft(order, { adjusted: value })
+  }
+
+  function changeObservations(order: SuggestedOrder, value: string) {
+    updateDraft(order, { observations: value })
   }
 
   function getAdjustedValue(order: SuggestedOrder) {
-    const key = orderKey(order)
-    return Object.prototype.hasOwnProperty.call(adjustedValues, key)
-      ? adjustedValues[key]
-      : order.ajustado ?? ''
+    return drafts[suggestedOrderKey(order)]?.adjusted ?? order.ajustado ?? ''
+  }
+
+  function getObservationsValue(order: SuggestedOrder) {
+    return drafts[suggestedOrderKey(order)]?.observations ?? order.observaciones ?? ''
+  }
+
+  function saveChanges() {
+    if (draftList.length === 0 || saveValidationMessage || batchUpdateMutation.isPending) return
+
+    batchUpdateMutation.mutate({
+      items: draftList.map(({ order, adjusted, observations }) => ({
+        item: order.item,
+        location: order.location,
+        forecast_origin: order.forecast_origin,
+        ajustado: Number(adjusted),
+        observaciones: observations.trim(),
+      })),
+    })
   }
 
   function exportCsv() {
@@ -259,6 +389,9 @@ export function DashboardPage() {
   const ordersErrorMessage = hasSuggestedOrdersError
     ? getSuggestedOrdersError(suggestedOrdersError)
     : undefined
+  const batchErrorMessage = batchUpdateMutation.isError
+    ? getBatchUpdateError(batchUpdateMutation.error)
+    : undefined
 
   return <div className="app-shell">
     <Sidebar />
@@ -268,11 +401,23 @@ export function DashboardPage() {
         <div className='topbar-actions'>
           <div className='login-date-card'><CalendarDays size={19}/><div><span>Fecha de ingreso</span><strong>{loginDate}</strong></div></div>
           <div className='location-control'>
+            <label className='forecast-origin-control'>
+              <span>Origen del pronóstico <b aria-hidden='true'>*</b></span>
+              <input
+                type='date'
+                value={forecastOrigin}
+                onChange={(event) => changeForecastOrigin(event.target.value)}
+                disabled={batchUpdateMutation.isPending}
+                aria-label='Fecha de origen del pronóstico'
+                aria-required='true'
+                required
+              />
+            </label>
             <select
               aria-label='Tienda'
               value={selectedLocation}
               onChange={(event) => changeLocation(event.target.value)}
-              disabled={isLoadingLocations || cannotLoadLocations || !locations?.length}
+              disabled={isLoadingLocations || cannotLoadLocations || !locations?.length || batchUpdateMutation.isPending}
             >
               {isLoadingLocations && <option value=''>Cargando tiendas...</option>}
               {cannotLoadLocations && <option value=''>No fue posible cargar tiendas</option>}
@@ -296,11 +441,16 @@ export function DashboardPage() {
         <IntelligentAlerts orders={suggestedOrders?.items ?? []}/>
       </section>
       <section className="content-grid suggested-orders-layout">
-        <div className="card catalog"><div className="catalog-head"><div><p className="eyebrow">Revisión de pedido</p><h2>Sugerido semanal inteligente</h2></div><button className="ghost" onClick={exportCsv} disabled={filteredOrders.length === 0}><Download size={16}/>Exportar CSV</button></div>
+        <div className="card catalog"><div className="catalog-head"><div><p className="eyebrow">Revisión de pedido</p><h2>Sugerido inteligente</h2>{forecastOrigin && <span className='active-forecast-filter'>Origen pronóstico: {forecastOrigin}</span>}</div><div className='suggested-orders-actions'><button className="ghost" onClick={exportCsv} disabled={filteredOrders.length === 0 || batchUpdateMutation.isPending}><Download size={16}/>Exportar CSV</button><button className='save-orders-button' type='button' onClick={saveChanges} disabled={draftList.length === 0 || Boolean(saveValidationMessage) || batchUpdateMutation.isPending} title={saveValidationMessage}><Save size={16}/>{batchUpdateMutation.isPending ? 'Guardando cambios...' : `Guardar cambios${draftList.length ? ` (${draftList.length})` : ''}`}</button></div></div>
+          <div className='suggested-orders-save-feedback' aria-live='polite'>
+            {saveValidationMessage && draftList.length > 0 && <p className='save-feedback-warning'>{saveValidationMessage}</p>}
+            {batchErrorMessage && <p className='save-feedback-error' role='alert'>{batchErrorMessage}</p>}
+            {saveResult && <p className='save-feedback-success'>Cambios guardados: {saveResult.updated_items} de {saveResult.requested_items} pedidos actualizados · {new Date(saveResult.approved_at).toLocaleString('es-MX')}.</p>}
+          </div>
           <div className="filters suggested-orders-filters">
             <label><Search size={16}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar item, producto, tienda o proveedor"/></label>
             <label className='page-size-control'>Filas por página
-              <select value={pageSize} onChange={(event) => changePageSize(Number(event.target.value))}>
+              <select value={pageSize} onChange={(event) => changePageSize(Number(event.target.value))} disabled={batchUpdateMutation.isPending}>
                 {[25, 50, 100, 200].map((size) => <option key={size} value={size}>{size}</option>)}
               </select>
             </label>
@@ -311,19 +461,24 @@ export function DashboardPage() {
             pageSize={suggestedOrders?.page_size ?? pageSize}
             totalPages={suggestedOrders?.total_pages ?? 0}
             totalItems={suggestedOrders?.total_items ?? 0}
-            isLoading={hasValidLocation && (isPendingOrders || isFetchingOrders)}
+            isLoading={hasValidLocation && hasValidForecastOrigin && (isPendingOrders || isFetchingOrders)}
             errorMessage={ordersErrorMessage}
             hasLocation={hasValidLocation}
+            hasForecastOrigin={hasValidForecastOrigin}
             getAdjustedValue={getAdjustedValue}
+            getObservationsValue={getObservationsValue}
+            isOrderModified={(order) => Boolean(drafts[suggestedOrderKey(order)])}
             onAdjustedChange={changeAdjustedValue}
+            onObservationsChange={changeObservations}
             onPageChange={setPage}
             onRetry={() => void refetchSuggestedOrders()}
+            isSaving={batchUpdateMutation.isPending}
           />
         </div>
       </section>
       <section className='store-report-download card'>
         <div><span className='report-download-icon'><Download size={21}/></span><div><strong>Reporte completo por tienda</strong><p>Descarga métricas, pronóstico, alertas y sugerido semanal en un archivo PDF.</p></div></div>
-        <button type='button' onClick={exportStoreReport} disabled={!hasValidLocation}><Download size={17}/>Descargar PDF</button>
+        <button type='button' onClick={exportStoreReport} disabled={!hasValidLocation || !hasValidForecastOrigin}><Download size={17}/>Descargar PDF</button>
       </section>
       <footer>OBI Smart · Grupo12 · 2026</footer>
     </main>

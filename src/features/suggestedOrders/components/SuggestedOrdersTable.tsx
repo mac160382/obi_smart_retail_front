@@ -9,10 +9,15 @@ interface SuggestedOrdersTableProps {
   isLoading: boolean
   errorMessage?: string
   hasLocation: boolean
+  hasForecastOrigin: boolean
   getAdjustedValue: (order: SuggestedOrder) => string | number
+  getObservationsValue: (order: SuggestedOrder) => string
+  isOrderModified: (order: SuggestedOrder) => boolean
   onAdjustedChange: (order: SuggestedOrder, value: string) => void
+  onObservationsChange: (order: SuggestedOrder, value: string) => void
   onPageChange: (page: number) => void
   onRetry: () => void
+  isSaving: boolean
 }
 
 const numberFormatter = new Intl.NumberFormat('es-MX', {
@@ -32,13 +37,22 @@ export function SuggestedOrdersTable({
   isLoading,
   errorMessage,
   hasLocation,
+  hasForecastOrigin,
   getAdjustedValue,
+  getObservationsValue,
+  isOrderModified,
   onAdjustedChange,
+  onObservationsChange,
   onPageChange,
   onRetry,
+  isSaving,
 }: SuggestedOrdersTableProps) {
   if (!hasLocation) {
     return <div className='orders-feedback'>Selecciona una tienda para consultar sus pedidos sugeridos.</div>
+  }
+
+  if (!hasForecastOrigin) {
+    return <div className='orders-feedback'>Selecciona la fecha de origen del pronóstico para consultar los pedidos sugeridos.</div>
   }
 
   if (isLoading) {
@@ -69,6 +83,7 @@ export function SuggestedOrdersTable({
             <tr>
               <th>Estado</th>
               <th>Item</th>
+              <th>Origen pronóstico</th>
               <th>Ubicación</th>
               <th>Tienda</th>
               <th>Producto</th>
@@ -82,13 +97,18 @@ export function SuggestedOrdersTable({
               <th>En tránsito</th>
               <th>Sugerido IA</th>
               <th>Ajustado</th>
+              <th>Observaciones</th>
             </tr>
           </thead>
           <tbody>
             {orders.map((order) => (
-              <tr key={`${order.location}-${order.item}`}>
+              <tr
+                key={`${order.location}-${order.item}-${order.forecast_origin}`}
+                className={isOrderModified(order) ? 'order-row-modified' : undefined}
+              >
                 <td><span className={`order-status ${statusClass(order.status)}`}>{order.status}</span></td>
                 <td><strong>{order.item}</strong></td>
+                <td>{order.forecast_origin}</td>
                 <td>{order.location}</td>
                 <td>{order.descripcion_tienda}</td>
                 <td>{order.descripcion_item}</td>
@@ -119,6 +139,19 @@ export function SuggestedOrdersTable({
                     placeholder='—'
                     aria-label={`Cantidad ajustada para ${order.descripcion_item}`}
                     onChange={(event) => onAdjustedChange(order, event.target.value)}
+                    disabled={isSaving}
+                  />
+                </td>
+                <td>
+                  <input
+                    className='order-observations'
+                    type='text'
+                    maxLength={5000}
+                    value={getObservationsValue(order)}
+                    placeholder='Agrega una observación'
+                    aria-label={`Observaciones para ${order.descripcion_item}`}
+                    onChange={(event) => onObservationsChange(order, event.target.value)}
+                    disabled={isSaving}
                   />
                 </td>
               </tr>
@@ -130,9 +163,9 @@ export function SuggestedOrdersTable({
       <nav className='orders-pagination' aria-label='Paginación de pedidos sugeridos'>
         <span>Mostrando {firstItem}-{lastItem} de {totalItems}</span>
         <div>
-          <button type='button' onClick={() => onPageChange(page - 1)} disabled={page <= 1}>Anterior</button>
+          <button type='button' onClick={() => onPageChange(page - 1)} disabled={page <= 1 || isSaving}>Anterior</button>
           <strong>Página {page} de {Math.max(totalPages, 1)}</strong>
-          <button type='button' onClick={() => onPageChange(page + 1)} disabled={page >= totalPages}>Siguiente</button>
+          <button type='button' onClick={() => onPageChange(page + 1)} disabled={page >= totalPages || isSaving}>Siguiente</button>
         </div>
       </nav>
     </>

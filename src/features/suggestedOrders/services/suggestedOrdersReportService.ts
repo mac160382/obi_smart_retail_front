@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import type { SuggestedOrder } from '../types/suggestedOrder'
+import { suggestedOrderKey, type SuggestedOrder } from '../types/suggestedOrder'
 
 interface ReportOptions {
   orders: SuggestedOrder[]
@@ -14,7 +14,7 @@ const NAVY: [number, number, number] = [15, 23, 42]
 const SLATE: [number, number, number] = [100, 116, 139]
 
 function adjustedValue(order: SuggestedOrder, values: Record<string, string>) {
-  const key = `${order.location}:${order.item}`
+  const key = suggestedOrderKey(order)
   return Object.prototype.hasOwnProperty.call(values, key) ? values[key] : order.ajustado ?? ''
 }
 
