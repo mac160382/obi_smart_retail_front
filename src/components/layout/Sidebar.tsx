@@ -19,7 +19,7 @@ export function Sidebar() {
         <nav>
           <a href='#'><Home size={18}/>Panel General</a>
           <NavLink to='/dashboard'><Sparkles size={18}/>Resumen</NavLink>
-          <a href='#'><BarChart3 size={18}/>Control de Inventario</a>
+          <NavLink to='/inventory'><BarChart3 size={18}/>Control de Inventario</NavLink>
           <NavLink to='/imports'><UploadCloud size={18}/>Carga de archivos CSV</NavLink>
         </nav>
       </div>

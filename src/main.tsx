@@ -11,6 +11,7 @@ import './styles/catalogs.css'
 import './styles/imports.css'
 import './styles/historical-import.css'
 import './styles/suggested-orders.css'
+import './styles/assistant-questions.css'
 
 const queryClient = new QueryClient({
   defaultOptions: {
