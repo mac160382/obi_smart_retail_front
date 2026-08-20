@@ -1,3 +1,4 @@
+import { Copy } from 'lucide-react'
 import type { SuggestedOrder } from '../types/suggestedOrder'
 
 interface SuggestedOrdersTableProps {
@@ -121,13 +122,33 @@ export function SuggestedOrdersTable({
                 <td>{order.current_stock_units}</td>
                 <td>{order.on_order_in_transit_units}</td>
                 <td>
-                  <input
-                    className='qty order-quantity'
-                    type='number'
-                    value={order.sugerido}
-                    aria-label={`Sugerido IA para ${order.descripcion_item}`}
-                    readOnly
-                  />
+                  <div className='order-suggested-control'>
+                    <input
+                      className='qty order-quantity'
+                      type='number'
+                      value={Math.max(0, order.sugerido)}
+                      aria-label={`Sugerido IA para ${order.descripcion_item}`}
+                      readOnly
+                    />
+                    <button
+                      type='button'
+                      className='copy-suggested-button'
+                      aria-label={`Copiar Sugerido IA a Ajustado para ${order.descripcion_item}`}
+                      title={order.status !== 'Estimado'
+                        ? 'La copia solo está disponible para pedidos estimados'
+                        : order.sugerido > 0
+                          ? 'Copiar a Ajustado'
+                          : 'Solo se puede copiar un valor mayor que cero'}
+                      onClick={() => {
+                        if (order.status === 'Estimado' && order.sugerido > 0) {
+                          onAdjustedChange(order, String(order.sugerido))
+                        }
+                      }}
+                      disabled={order.status !== 'Estimado' || order.sugerido <= 0 || isSaving}
+                    >
+                      <Copy size={15}/>
+                    </button>
+                  </div>
                 </td>
                 <td>
                   <input
@@ -139,7 +160,7 @@ export function SuggestedOrdersTable({
                     placeholder='—'
                     aria-label={`Cantidad ajustada para ${order.descripcion_item}`}
                     onChange={(event) => onAdjustedChange(order, event.target.value)}
-                    disabled={isSaving}
+                    disabled={order.status === 'Aprobado' || isSaving}
                   />
                 </td>
                 <td>
@@ -148,10 +169,10 @@ export function SuggestedOrdersTable({
                     type='text'
                     maxLength={5000}
                     value={getObservationsValue(order)}
-                    placeholder='Agrega una observación'
+                    placeholder='Observación opcional'
                     aria-label={`Observaciones para ${order.descripcion_item}`}
                     onChange={(event) => onObservationsChange(order, event.target.value)}
-                    disabled={isSaving}
+                    disabled={order.status === 'Aprobado' || isSaving}
                   />
                 </td>
               </tr>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
-import { AlertTriangle, Archive, Boxes, BrainCircuit, CalendarDays, Calculator, Clock3, Download, PackageCheck, Save, Search, ShieldCheck, Sparkles, SlidersHorizontal, TrendingDown } from 'lucide-react'
+import { AlertTriangle, Archive, Boxes, BrainCircuit, CalendarDays, Calculator, Clock3, Copy, Download, PackageCheck, Save, Search, ShieldCheck, SlidersHorizontal, TrendingDown, X } from 'lucide-react'
 import { Sidebar } from '../components/layout/Sidebar'
 import { getLocations } from '../features/catalogs/services/locationService'
 import { SuggestedOrdersTable } from '../features/suggestedOrders/components/SuggestedOrdersTable'
@@ -18,10 +18,9 @@ interface SuggestedOrderDraft {
   observations: string
 }
 
-function escapeCsv(value: string | number | null) {
-  if (value === null) return ''
-  return `"${String(value).replaceAll('"', '""')}"`
-}
+const quantityFormatter = new Intl.NumberFormat('es-MX', {
+  maximumFractionDigits: 2,
+})
 
 function getSuggestedOrdersError(error: unknown) {
   if (axios.isAxiosError(error)) {
@@ -157,9 +156,11 @@ export function DashboardPage() {
   const [pageSize, setPageSize] = useState(50)
   const [drafts, setDrafts] = useState<Record<string, SuggestedOrderDraft>>({})
   const [saveResult, setSaveResult] = useState<SuggestedOrderBatchUpdateResponse | null>(null)
+  const [isSaveConfirmationOpen, setIsSaveConfirmationOpen] = useState(false)
   const batchUpdateMutation = useMutation({
     mutationFn: updateSuggestedOrdersBatch,
     onSuccess: (response) => {
+      setIsSaveConfirmationOpen(false)
       setDrafts({})
       setSaveResult(response)
       void queryClient.invalidateQueries({ queryKey: ['suggested-orders'] })
@@ -219,29 +220,35 @@ export function DashboardPage() {
     if (!term) return suggestedOrders?.items ?? []
 
     return (suggestedOrders?.items ?? []).filter((order) => (
-      [order.item, order.descripcion_item, order.descripcion_proveedor, order.descripcion_tienda]
+      [order.item, order.descripcion_item, order.descripcion_proveedor, order.descripcion_tienda, order.status]
         .some((value) => value.toLowerCase().includes(term))
     ))
   }, [search, suggestedOrders?.items])
 
   const draftList = useMemo(() => Object.values(drafts), [drafts])
+  const positiveSuggestedOrders = useMemo(
+    () => (suggestedOrders?.items ?? []).filter((order) => (
+      order.status === 'Estimado' && order.sugerido > 0
+    )),
+    [suggestedOrders?.items],
+  )
   const adjustedValues = useMemo(() => Object.fromEntries(
     Object.entries(drafts).map(([key, draft]) => [key, draft.adjusted]),
   ), [drafts])
   const saveValidationMessage = useMemo(() => {
     if (draftList.length === 0) return undefined
     if (draftList.length > 500) return 'Solo se pueden guardar hasta 500 pedidos por operación.'
+    if (draftList.some(({ order }) => order.status === 'Aprobado')) {
+      return 'Los pedidos aprobados no se pueden modificar.'
+    }
 
     const invalidAdjusted = draftList.some(({ adjusted }) => (
       adjusted.trim() === '' || !Number.isFinite(Number(adjusted))
     ))
     if (invalidAdjusted) return 'Captura una cantidad ajustada numérica en todas las filas modificadas.'
 
-    const invalidObservations = draftList.some(({ observations }) => {
-      const value = observations.trim()
-      return value.length === 0 || value.length > 5000
-    })
-    if (invalidObservations) return 'Captura observaciones de entre 1 y 5000 caracteres en todas las filas modificadas.'
+    const invalidObservations = draftList.some(({ observations }) => observations.trim().length > 5000)
+    if (invalidObservations) return 'Las observaciones no pueden superar los 5000 caracteres.'
 
     const invalidIdentity = draftList.some(({ order }) => (
       order.item.length === 0 || order.item.length > 50 || !/^\d{4}-\d{2}-\d{2}$/.test(order.forecast_origin)
@@ -267,6 +274,7 @@ export function DashboardPage() {
   }, [adjustedValues, suggestedOrders?.items])
 
   function changeLocation(nextLocation: string) {
+    setIsSaveConfirmationOpen(false)
     setSelectedLocation(nextLocation)
     setPage(1)
     setSearch('')
@@ -276,6 +284,7 @@ export function DashboardPage() {
   }
 
   function changeForecastOrigin(nextForecastOrigin: string) {
+    setIsSaveConfirmationOpen(false)
     setForecastOrigin(nextForecastOrigin)
     setPage(1)
     setSearch('')
@@ -321,11 +330,43 @@ export function DashboardPage() {
   }
 
   function changeAdjustedValue(order: SuggestedOrder, value: string) {
+    if (order.status === 'Aprobado') return
     updateDraft(order, { adjusted: value })
   }
 
   function changeObservations(order: SuggestedOrder, value: string) {
+    if (order.status === 'Aprobado') return
     updateDraft(order, { observations: value })
+  }
+
+  function copyAllSuggestedValues() {
+    if (positiveSuggestedOrders.length === 0 || batchUpdateMutation.isPending) return
+
+    setSaveResult(null)
+    batchUpdateMutation.reset()
+    setDrafts((current) => {
+      const next = { ...current }
+
+      positiveSuggestedOrders.forEach((order) => {
+        const key = suggestedOrderKey(order)
+        const existing = next[key]
+        const original = existing?.order ?? order
+        const updated: SuggestedOrderDraft = {
+          order: original,
+          adjusted: String(order.sugerido),
+          observations: existing?.observations ?? original.observaciones ?? '',
+        }
+        const isOriginal = (
+          updated.adjusted === String(original.ajustado ?? '') &&
+          updated.observations === (original.observaciones ?? '')
+        )
+
+        if (isOriginal) delete next[key]
+        else next[key] = updated
+      })
+
+      return next
+    })
   }
 
   function getAdjustedValue(order: SuggestedOrder) {
@@ -339,42 +380,25 @@ export function DashboardPage() {
   function saveChanges() {
     if (draftList.length === 0 || saveValidationMessage || batchUpdateMutation.isPending) return
 
-    batchUpdateMutation.mutate({
-      items: draftList.map(({ order, adjusted, observations }) => ({
-        item: order.item,
-        location: order.location,
-        forecast_origin: order.forecast_origin,
-        ajustado: Number(adjusted),
-        observaciones: observations.trim(),
-      })),
-    })
+    batchUpdateMutation.reset()
+    setIsSaveConfirmationOpen(true)
   }
 
-  function exportCsv() {
-    const header = [
-      'ESTADO', 'ITEM', 'UBICACION', 'TIENDA', 'PRODUCTO', 'PROVEEDOR', 'PREDICCION',
-      'LEAD_TIME_DAYS', 'REVIEW_PERIOD_DAYS', 'UPLIFT_ESPERADO', 'MANEJO_MINIMO',
-      'STOCK_ACTUAL', 'EN_TRANSITO', 'SUGERIDO_IA', 'AJUSTADO',
-    ].join(',')
-    const rows = filteredOrders.map((order) => [
-      order.status,
-      order.item,
-      order.location,
-      order.descripcion_tienda,
-      order.descripcion_item,
-      order.descripcion_proveedor,
-      order.prediccion,
-      order.lead_time_days,
-      order.review_period_days,
-      order.uplift_esperado,
-      order.minimum_handling_quantity_units,
-      order.current_stock_units,
-      order.on_order_in_transit_units,
-      order.sugerido,
-      getAdjustedValue(order),
-    ].map(escapeCsv).join(',')).join('\n')
-    const blob = new Blob([`${header}\n${rows}`], {type:'text/csv;charset=utf-8'})
-    const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`pedido-${selectedLocation || 'sin-ubicacion'}.csv`; a.click(); URL.revokeObjectURL(url)
+  function confirmSaveChanges() {
+    if (draftList.length === 0 || saveValidationMessage || batchUpdateMutation.isPending) return
+
+    batchUpdateMutation.mutate({
+      items: draftList.map(({ order, adjusted, observations }) => {
+        const normalizedObservations = observations.trim()
+        return {
+          item: order.item,
+          location: order.location,
+          forecast_origin: order.forecast_origin,
+          ajustado: Number(adjusted),
+          ...(normalizedObservations ? { observaciones: normalizedObservations } : {}),
+        }
+      }),
+    })
   }
 
   function exportStoreReport() {
@@ -429,7 +453,6 @@ export function DashboardPage() {
         </div>
       </header>
       <section className="notice card"><ShieldCheck/><div><strong>Fórmula de abastecimiento equilibrada</strong><p>Optimiza almacenamiento, disponibilidad y capital de trabajo.</p></div></section>
-      <section className="ai-bar"><Sparkles/><input placeholder="Ej: aumenta leche y reduce bebidas..."/><button>Aplicar comando AI</button></section>
       <section className="stats">
         <div className="card stat-card"><div className="stat-icon stat-icon-found"><PackageCheck size={21}/></div><div><span>Pedidos encontrados</span><strong>{suggestedOrders?.total_items ?? 0}</strong></div></div>
         <div className="card stat-card"><div className="stat-icon stat-icon-estimated"><Calculator size={21}/></div><div><span>Estimados en página</span><strong>{totals.estimated}</strong></div></div>
@@ -441,14 +464,14 @@ export function DashboardPage() {
         <IntelligentAlerts orders={suggestedOrders?.items ?? []}/>
       </section>
       <section className="content-grid suggested-orders-layout">
-        <div className="card catalog"><div className="catalog-head"><div><p className="eyebrow">Revisión de pedido</p><h2>Sugerido inteligente</h2>{forecastOrigin && <span className='active-forecast-filter'>Origen pronóstico: {forecastOrigin}</span>}</div><div className='suggested-orders-actions'><button className="ghost" onClick={exportCsv} disabled={filteredOrders.length === 0 || batchUpdateMutation.isPending}><Download size={16}/>Exportar CSV</button><button className='save-orders-button' type='button' onClick={saveChanges} disabled={draftList.length === 0 || Boolean(saveValidationMessage) || batchUpdateMutation.isPending} title={saveValidationMessage}><Save size={16}/>{batchUpdateMutation.isPending ? 'Guardando cambios...' : `Guardar cambios${draftList.length ? ` (${draftList.length})` : ''}`}</button></div></div>
+        <div className="card catalog"><div className="catalog-head"><div><p className="eyebrow">Revisión de pedido</p><h2>Sugerido inteligente</h2>{forecastOrigin && <span className='active-forecast-filter'>Origen pronóstico: {forecastOrigin}</span>}</div><div className='suggested-orders-actions'><button className='copy-all-suggested-button' type='button' onClick={copyAllSuggestedValues} disabled={positiveSuggestedOrders.length === 0 || batchUpdateMutation.isPending} title='Copiar los valores positivos de pedidos estimados en la página actual'><Copy size={16}/>Copiar sugeridos estimados ({positiveSuggestedOrders.length})</button><button className='save-orders-button' type='button' onClick={saveChanges} disabled={draftList.length === 0 || Boolean(saveValidationMessage) || batchUpdateMutation.isPending} title={saveValidationMessage}><Save size={16}/>{batchUpdateMutation.isPending ? 'Guardando cambios...' : `Guardar cambios${draftList.length ? ` (${draftList.length})` : ''}`}</button></div></div>
           <div className='suggested-orders-save-feedback' aria-live='polite'>
             {saveValidationMessage && draftList.length > 0 && <p className='save-feedback-warning'>{saveValidationMessage}</p>}
             {batchErrorMessage && <p className='save-feedback-error' role='alert'>{batchErrorMessage}</p>}
             {saveResult && <p className='save-feedback-success'>Cambios guardados: {saveResult.updated_items} de {saveResult.requested_items} pedidos actualizados · {new Date(saveResult.approved_at).toLocaleString('es-MX')}.</p>}
           </div>
           <div className="filters suggested-orders-filters">
-            <label><Search size={16}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar item, producto, tienda o proveedor"/></label>
+            <label><Search size={16}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar item, producto, tienda, proveedor o status"/></label>
             <label className='page-size-control'>Filas por página
               <select value={pageSize} onChange={(event) => changePageSize(Number(event.target.value))} disabled={batchUpdateMutation.isPending}>
                 {[25, 50, 100, 200].map((size) => <option key={size} value={size}>{size}</option>)}
@@ -480,6 +503,57 @@ export function DashboardPage() {
         <div><span className='report-download-icon'><Download size={21}/></span><div><strong>Reporte completo por tienda</strong><p>Descarga métricas, pronóstico, alertas y sugerido semanal en un archivo PDF.</p></div></div>
         <button type='button' onClick={exportStoreReport} disabled={!hasValidLocation || !hasValidForecastOrigin}><Download size={17}/>Descargar PDF</button>
       </section>
+      {isSaveConfirmationOpen && (
+        <div className='save-confirmation-overlay' role='presentation'>
+          <section className='save-confirmation-modal' role='dialog' aria-modal='true' aria-labelledby='save-confirmation-title'>
+            <header>
+              <div>
+                <p className='eyebrow'>Autorización requerida</p>
+                <h2 id='save-confirmation-title'>Confirmar cambios de pedidos</h2>
+                <p>Revisa los {draftList.length} {draftList.length === 1 ? 'registro seleccionado' : 'registros seleccionados'} antes de aplicar los ajustes.</p>
+              </div>
+              <button type='button' className='save-confirmation-close' aria-label='Cerrar confirmación' onClick={() => setIsSaveConfirmationOpen(false)} disabled={batchUpdateMutation.isPending}><X size={19}/></button>
+            </header>
+            <div className='save-confirmation-table-wrap'>
+              <table className='save-confirmation-table'>
+                <thead><tr><th>Item</th><th>Producto</th><th>Sugerido IA</th><th>Ajustado anterior</th><th>Nuevo ajustado</th><th>Observaciones</th></tr></thead>
+                <tbody>
+                  {draftList.map(({ order, adjusted, observations }) => (
+                    <tr key={suggestedOrderKey(order)}>
+                      <td><strong>{order.item}</strong></td>
+                      <td>{order.descripcion_item}</td>
+                      <td>{quantityFormatter.format(Math.max(0, order.sugerido))}</td>
+                      <td>{order.ajustado === null ? '—' : quantityFormatter.format(order.ajustado)}</td>
+                      <td>
+                        <input
+                          className='save-confirmation-adjusted-input'
+                          type='number'
+                          min='0'
+                          step='any'
+                          value={adjusted}
+                          aria-label={`Nuevo ajustado para ${order.descripcion_item}`}
+                          onChange={(event) => changeAdjustedValue(order, event.target.value)}
+                          disabled={order.status === 'Aprobado' || batchUpdateMutation.isPending}
+                        />
+                      </td>
+                      <td>{observations.trim() || 'Sin observaciones'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {draftList.length === 0 && <p className='save-confirmation-empty'>No quedan cambios pendientes por autorizar.</p>}
+            {saveValidationMessage && <p className='save-confirmation-warning' role='alert'>{saveValidationMessage}</p>}
+            {batchErrorMessage && <p className='save-confirmation-error' role='alert'>{batchErrorMessage}</p>}
+            <footer>
+              <button type='button' className='save-confirmation-cancel' onClick={() => setIsSaveConfirmationOpen(false)} disabled={batchUpdateMutation.isPending}>Cancelar</button>
+              <button type='button' className='save-confirmation-approve' onClick={confirmSaveChanges} disabled={draftList.length === 0 || Boolean(saveValidationMessage) || batchUpdateMutation.isPending}>
+                <Save size={16}/>{batchUpdateMutation.isPending ? 'Aplicando cambios...' : `Autorizar y aplicar (${draftList.length})`}
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
       <footer>OBI Smart · Grupo12 · 2026</footer>
     </main>
   </div>

@@ -5,7 +5,7 @@ export interface SuggestedOrderBatchUpdateItem {
   location: number
   forecast_origin: string
   ajustado: number
-  observaciones: string
+  observaciones?: string
 }
 
 export interface SuggestedOrderBatchUpdateRequest {
