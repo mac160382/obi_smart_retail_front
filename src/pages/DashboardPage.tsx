@@ -9,7 +9,7 @@ import { SuggestedOrdersTable } from '../features/suggestedOrders/components/Sug
 import { updateSuggestedOrdersBatch } from '../features/suggestedOrders/services/suggestedOrderBatchUpdateService'
 import { getSuggestedOrders } from '../features/suggestedOrders/services/suggestedOrdersService'
 import { downloadSuggestedOrdersReport } from '../features/suggestedOrders/services/suggestedOrdersReportService'
-import { isSuggestedOrderCopyEligible, suggestedOrderKey, type SuggestedOrder } from '../features/suggestedOrders/types/suggestedOrder'
+import { isSuggestedOrderCopyEligible, isSuggestedOrderPurchaseRequired, suggestedOrderKey, type SuggestedOrder } from '../features/suggestedOrders/types/suggestedOrder'
 import type { SuggestedOrderBatchUpdateResponse } from '../features/suggestedOrders/types/suggestedOrderBatchUpdate'
 import { useAuthStore } from '../features/auth/store/authStore'
 
@@ -238,11 +238,16 @@ export function DashboardPage() {
 
   const filteredOrders = useMemo(() => {
     const term = search.trim().toLowerCase()
-    if (!term) return suggestedOrders?.items ?? []
+    const orders = suggestedOrders?.items ?? []
+    const matchingOrders = term
+      ? orders.filter((order) => (
+          [order.item, order.descripcion_item, order.descripcion_proveedor, order.descripcion_tienda, order.status]
+            .some((value) => value.toLowerCase().includes(term))
+        ))
+      : orders
 
-    return (suggestedOrders?.items ?? []).filter((order) => (
-      [order.item, order.descripcion_item, order.descripcion_proveedor, order.descripcion_tienda, order.status]
-        .some((value) => value.toLowerCase().includes(term))
+    return [...matchingOrders].sort((left, right) => (
+      Number(isSuggestedOrderPurchaseRequired(right)) - Number(isSuggestedOrderPurchaseRequired(left))
     ))
   }, [search, suggestedOrders?.items])
 

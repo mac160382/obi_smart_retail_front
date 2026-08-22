@@ -49,12 +49,18 @@ export function suggestedOrderKey(order: Pick<SuggestedOrder, 'location' | 'item
   return `${order.location}:${order.item}:${order.forecast_origin}`
 }
 
+export function isSuggestedOrderPurchaseRequired(order: SuggestedOrder) {
+  return (
+    typeof order.reorder_point === 'number' &&
+    Number.isFinite(order.reorder_point) &&
+    order.current_stock_units < order.reorder_point
+  )
+}
+
 export function isSuggestedOrderCopyEligible(order: SuggestedOrder) {
   return (
     order.status === 'Estimado' &&
     order.sugerido > 0 &&
-    typeof order.reorder_point === 'number' &&
-    Number.isFinite(order.reorder_point) &&
-    order.current_stock_units < order.reorder_point
+    isSuggestedOrderPurchaseRequired(order)
   )
 }
