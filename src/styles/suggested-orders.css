@@ -6,7 +6,7 @@
 .orders-feedback-error{flex-direction:column;color:#b91c1c}
 .orders-feedback button,.orders-pagination button{border:1px solid #cbd5e1;border-radius:9px;background:#fff;color:#475569;padding:8px 12px;font-weight:700;cursor:pointer}
 .suggested-orders-table-wrap{max-width:calc(100vw - 298px);max-height:570px}
-.suggested-orders-table{min-width:2354px}
+.suggested-orders-table{min-width:2774px}
 .suggested-orders-table th{position:sticky;top:0;z-index:2;white-space:nowrap}
 .suggested-orders-table td{max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .suggested-orders-table tbody tr{cursor:default}

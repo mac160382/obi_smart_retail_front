@@ -29,6 +29,10 @@ function statusClass(status: SuggestedOrder['status']) {
   return status.toLowerCase()
 }
 
+function formatMetric(value: number | null | undefined) {
+  return value === null || value === undefined ? '—' : numberFormatter.format(value)
+}
+
 export function SuggestedOrdersTable({
   orders,
   page,
@@ -96,6 +100,9 @@ export function SuggestedOrdersTable({
               <th>Manejo mín.</th>
               <th>Stock actual</th>
               <th>En tránsito</th>
+              <th>Máx. qty vendida</th>
+              <th>Safety stock</th>
+              <th>Reorder point</th>
               <th>Sugerido IA</th>
               <th>Ajustado</th>
               <th>Observaciones</th>
@@ -121,6 +128,9 @@ export function SuggestedOrdersTable({
                 <td>{order.minimum_handling_quantity_units}</td>
                 <td>{order.current_stock_units}</td>
                 <td>{order.on_order_in_transit_units}</td>
+                <td>{formatMetric(order.max_qty_vendida)}</td>
+                <td>{formatMetric(order.safety_stock)}</td>
+                <td>{formatMetric(order.reorder_point)}</td>
                 <td>
                   <div className='order-suggested-control'>
                     <input

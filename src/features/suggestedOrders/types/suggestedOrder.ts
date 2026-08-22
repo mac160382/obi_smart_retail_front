@@ -21,6 +21,9 @@ export interface SuggestedOrder {
   minimum_handling_quantity_units: number
   current_stock_units: number
   on_order_in_transit_units: number
+  max_qty_vendida: number | null
+  safety_stock: number | null
+  reorder_point: number | null
   sugerido: number
   status: SuggestedOrderStatus
 }
