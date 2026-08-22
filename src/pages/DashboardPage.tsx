@@ -9,7 +9,7 @@ import { SuggestedOrdersTable } from '../features/suggestedOrders/components/Sug
 import { updateSuggestedOrdersBatch } from '../features/suggestedOrders/services/suggestedOrderBatchUpdateService'
 import { getSuggestedOrders } from '../features/suggestedOrders/services/suggestedOrdersService'
 import { downloadSuggestedOrdersReport } from '../features/suggestedOrders/services/suggestedOrdersReportService'
-import { suggestedOrderKey, type SuggestedOrder } from '../features/suggestedOrders/types/suggestedOrder'
+import { isSuggestedOrderCopyEligible, suggestedOrderKey, type SuggestedOrder } from '../features/suggestedOrders/types/suggestedOrder'
 import type { SuggestedOrderBatchUpdateResponse } from '../features/suggestedOrders/types/suggestedOrderBatchUpdate'
 import { useAuthStore } from '../features/auth/store/authStore'
 
@@ -247,10 +247,8 @@ export function DashboardPage() {
   }, [search, suggestedOrders?.items])
 
   const draftList = useMemo(() => Object.values(drafts), [drafts])
-  const positiveSuggestedOrders = useMemo(
-    () => (suggestedOrders?.items ?? []).filter((order) => (
-      order.status === 'Estimado' && order.sugerido > 0
-    )),
+  const copyEligibleOrders = useMemo(
+    () => (suggestedOrders?.items ?? []).filter(isSuggestedOrderCopyEligible),
     [suggestedOrders?.items],
   )
   const adjustedValues = useMemo(() => Object.fromEntries(
@@ -361,14 +359,14 @@ export function DashboardPage() {
   }
 
   function copyAllSuggestedValues() {
-    if (positiveSuggestedOrders.length === 0 || batchUpdateMutation.isPending) return
+    if (copyEligibleOrders.length === 0 || batchUpdateMutation.isPending) return
 
     setSaveResult(null)
     batchUpdateMutation.reset()
     setDrafts((current) => {
       const next = { ...current }
 
-      positiveSuggestedOrders.forEach((order) => {
+      copyEligibleOrders.forEach((order) => {
         const key = suggestedOrderKey(order)
         const existing = next[key]
         const original = existing?.order ?? order
@@ -485,7 +483,7 @@ export function DashboardPage() {
         <IntelligentAlerts orders={suggestedOrders?.items ?? []}/>
       </section>
       <section className="content-grid suggested-orders-layout">
-        <div className="card catalog"><div className="catalog-head"><div><p className="eyebrow">Revisión de pedido</p><h2>Sugerido inteligente</h2>{forecastOrigin && <span className='active-forecast-filter'>Origen pronóstico: {forecastOrigin}</span>}</div><div className='suggested-orders-actions'><button className='copy-all-suggested-button' type='button' onClick={copyAllSuggestedValues} disabled={positiveSuggestedOrders.length === 0 || batchUpdateMutation.isPending} title='Copiar los valores positivos de pedidos estimados en la página actual'><Copy size={16}/>Copiar sugeridos estimados ({positiveSuggestedOrders.length})</button><button className='save-orders-button' type='button' onClick={saveChanges} disabled={draftList.length === 0 || Boolean(saveValidationMessage) || batchUpdateMutation.isPending} title={saveValidationMessage}><Save size={16}/>{batchUpdateMutation.isPending ? 'Guardando cambios...' : `Guardar cambios${draftList.length ? ` (${draftList.length})` : ''}`}</button></div></div>
+        <div className="card catalog"><div className="catalog-head"><div><p className="eyebrow">Revisión de pedido</p><h2>Sugerido inteligente</h2>{forecastOrigin && <span className='active-forecast-filter'>Origen pronóstico: {forecastOrigin}</span>}</div><div className='suggested-orders-actions'><button className='copy-all-suggested-button' type='button' onClick={copyAllSuggestedValues} disabled={copyEligibleOrders.length === 0 || batchUpdateMutation.isPending} title='Copiar pedidos estimados cuyo stock actual sea menor que el reorder point'><Copy size={16}/>Copiar sugeridos estimados ({copyEligibleOrders.length})</button><button className='save-orders-button' type='button' onClick={saveChanges} disabled={draftList.length === 0 || Boolean(saveValidationMessage) || batchUpdateMutation.isPending} title={saveValidationMessage}><Save size={16}/>{batchUpdateMutation.isPending ? 'Guardando cambios...' : `Guardar cambios${draftList.length ? ` (${draftList.length})` : ''}`}</button></div></div>
           <div className='suggested-orders-save-feedback' aria-live='polite'>
             {saveValidationMessage && draftList.length > 0 && <p className='save-feedback-warning'>{saveValidationMessage}</p>}
             {batchErrorMessage && <p className='save-feedback-error' role='alert'>{batchErrorMessage}</p>}

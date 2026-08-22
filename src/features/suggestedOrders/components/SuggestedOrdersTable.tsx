@@ -1,5 +1,5 @@
 import { Copy } from 'lucide-react'
-import type { SuggestedOrder } from '../types/suggestedOrder'
+import { isSuggestedOrderCopyEligible, type SuggestedOrder } from '../types/suggestedOrder'
 
 interface SuggestedOrdersTableProps {
   orders: SuggestedOrder[]
@@ -146,15 +146,19 @@ export function SuggestedOrdersTable({
                       aria-label={`Copiar Sugerido IA a Ajustado para ${order.descripcion_item}`}
                       title={order.status !== 'Estimado'
                         ? 'La copia solo está disponible para pedidos estimados'
-                        : order.sugerido > 0
-                          ? 'Copiar a Ajustado'
-                          : 'Solo se puede copiar un valor mayor que cero'}
+                        : order.sugerido <= 0
+                          ? 'Solo se puede copiar un valor mayor que cero'
+                          : typeof order.reorder_point !== 'number'
+                            ? 'No existe un reorder point disponible'
+                            : order.current_stock_units >= order.reorder_point
+                              ? 'El stock actual debe ser menor que el reorder point'
+                              : 'Copiar a Ajustado'}
                       onClick={() => {
-                        if (order.status === 'Estimado' && order.sugerido > 0) {
+                        if (isSuggestedOrderCopyEligible(order)) {
                           onAdjustedChange(order, String(order.sugerido))
                         }
                       }}
-                      disabled={order.status !== 'Estimado' || order.sugerido <= 0 || isSaving}
+                      disabled={!isSuggestedOrderCopyEligible(order) || isSaving}
                     >
                       <Copy size={15}/>
                     </button>

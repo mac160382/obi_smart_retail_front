@@ -48,3 +48,13 @@ export interface SuggestedOrdersParams {
 export function suggestedOrderKey(order: Pick<SuggestedOrder, 'location' | 'item' | 'forecast_origin'>) {
   return `${order.location}:${order.item}:${order.forecast_origin}`
 }
+
+export function isSuggestedOrderCopyEligible(order: SuggestedOrder) {
+  return (
+    order.status === 'Estimado' &&
+    order.sugerido > 0 &&
+    typeof order.reorder_point === 'number' &&
+    Number.isFinite(order.reorder_point) &&
+    order.current_stock_units < order.reorder_point
+  )
+}
