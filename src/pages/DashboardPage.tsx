@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { AlertTriangle, Archive, Boxes, BrainCircuit, CalendarDays, Calculator, Clock3, Copy, Download, PackageCheck, Save, Search, ShieldCheck, SlidersHorizontal, TrendingDown, X } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Sidebar } from '../components/layout/Sidebar'
 import { getLocations } from '../features/catalogs/services/locationService'
 import { SuggestedOrdersTable } from '../features/suggestedOrders/components/SuggestedOrdersTable'
@@ -16,6 +17,11 @@ interface SuggestedOrderDraft {
   order: SuggestedOrder
   adjusted: string
   observations: string
+}
+
+interface DashboardLocationState {
+  forecastOrigin?: string
+  suggestedOrderEventId?: string
 }
 
 const quantityFormatter = new Intl.NumberFormat('es-MX', {
@@ -142,6 +148,8 @@ function IntelligentAlerts({ orders }: { orders: SuggestedOrder[] }) {
 
 export function DashboardPage() {
   const queryClient = useQueryClient()
+  const locationState = useLocation().state as DashboardLocationState | null
+  const navigate = useNavigate()
   const session = useAuthStore((state) => state.session)
   const loginAt = session?.loginAt
   const loginDate = new Intl.DateTimeFormat('es-MX', {
@@ -180,6 +188,19 @@ export function DashboardPage() {
   const location = Number(selectedLocation)
   const hasValidLocation = selectedLocation !== '' && Number.isInteger(location)
   const hasValidForecastOrigin = /^\d{4}-\d{2}-\d{2}$/.test(forecastOrigin)
+
+  useEffect(() => {
+    const eventForecastOrigin = locationState?.forecastOrigin
+    if (!eventForecastOrigin || !/^\d{4}-\d{2}-\d{2}$/.test(eventForecastOrigin)) return
+
+    setForecastOrigin(eventForecastOrigin)
+    setPage(1)
+    setSearch('')
+    setDrafts({})
+    setSaveResult(null)
+    setIsSaveConfirmationOpen(false)
+    navigate('/dashboard', { replace: true, state: null })
+  }, [locationState?.forecastOrigin, locationState?.suggestedOrderEventId, navigate])
 
   const {
     data: suggestedOrders,

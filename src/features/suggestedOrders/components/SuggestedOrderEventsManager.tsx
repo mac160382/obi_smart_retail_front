@@ -107,7 +107,12 @@ export function SuggestedOrderEventsManager() {
         insertedRows: data.inserted_rows,
       })
       void queryClient.invalidateQueries({ queryKey: ['suggested-orders'] })
-      navigate('/dashboard')
+      navigate('/dashboard', {
+        state: {
+          forecastOrigin: data.forecast_origin,
+          suggestedOrderEventId: event.id ?? payload.event_id,
+        },
+      })
     }
 
     const waitForReconnect = (delay: number) => new Promise<void>((resolve) => {
